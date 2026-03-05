@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Soft Blue/Green Palette (Calm & Professional) */
+  --primary: 210 100% 98%;
+  --primary-foreground: 222 47% 11%;
+  
+  --brand: 200 65% 55%; /* Calm Blue */
+  --brand-foreground: 0 0% 100%;
+  
+  --secondary: 150 40% 95%; /* Soft Green */
+  --secondary-foreground: 160 84% 15%;
+  
+  --accent: 35 100% 96%; /* Warm Sand/Linen */
+  --accent-foreground: 30 60% 15%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 222 47% 11%;
+
+  --radius: 1rem;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  --primary: 217 32% 17%;
+  --primary-foreground: 210 40% 98%;
+
+  --brand: 200 70% 60%;
+  --brand-foreground: 222 47% 11%;
+
+  --secondary: 160 50% 15%;
+  --secondary-foreground: 160 80% 90%;
+
+  --accent: 30 40% 15%;
+  --accent-foreground: 35 100% 90%;
+
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+
+  --border: 217 32% 17%;
+  --input: 217 32% 91%;
+  --ring: 212 26% 83%;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: hsl(var(--card));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  #root {
+    max-width: 1600px;
+    margin: 0 auto;
+    min-height: 100vh;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.05);
+  }
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.card-shadow {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Typography */
+h1 { font-size: 1.75rem; font-weight: 700; color: hsl(var(--brand)); }
+h2 { font-size: 1.25rem; font-weight: 600; }
+p { font-size: 0.95rem; line-height: 1.5; color: hsl(var(--foreground) / 0.8); }
+
+.text-subtle { color: hsl(var(--foreground) / 0.6); font-size: 0.85rem; }
+
+/* Custom Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
