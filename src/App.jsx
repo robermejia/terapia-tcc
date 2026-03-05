@@ -48,6 +48,10 @@ function App() {
   const [tccStep, setTccStep] = useState(0);
   const [tccAnswers, setTccAnswers] = useState(['', '', '5', '', '']);
   const [logs, setLogs] = useState([]);
+  const [localLogs, setLocalLogs] = useState(() => {
+    const saved = localStorage.getItem('tcc_local_logs');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [habits, setHabits] = useState([]);
 
   // ─── Firebase Auth listener ───────────────────────────────────────────────
@@ -130,9 +134,20 @@ function App() {
 
   // ─── Logs CRUD ────────────────────────────────────────────────────────────
   const saveLog = async (type, content, data = {}) => {
+    const timestamp = new Date().toISOString();
+    const id = `local_${Date.now()}`;
+    
+    if (type === 'tcc_record') {
+      const newLog = { id, date: timestamp, type, content, data };
+      const updatedLocal = [newLog, ...localLogs];
+      setLocalLogs(updatedLocal);
+      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      return;
+    }
+
     if (!user?.uid) return;
     await addDoc(collection(db, 'users', user.uid, 'logs'), {
-      date: new Date().toISOString(),
+      date: timestamp,
       type,
       content,
       data
@@ -140,11 +155,27 @@ function App() {
   };
 
   const deleteLog = async (id) => {
+    // Check if it's a local log
+    if (id.toString().startsWith('local_')) {
+      const updatedLocal = localLogs.filter(l => l.id !== id);
+      setLocalLogs(updatedLocal);
+      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      return;
+    }
+
     if (!user?.uid) return;
     await deleteDoc(doc(db, 'users', user.uid, 'logs', id));
   };
 
   const updateLog = async (id, patch) => {
+    // Check if it's a local log
+    if (id.toString().startsWith('local_')) {
+      const updatedLocal = localLogs.map(l => l.id === id ? { ...l, ...patch } : l);
+      setLocalLogs(updatedLocal);
+      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      return;
+    }
+
     if (!user?.uid) return;
     await updateDoc(doc(db, 'users', user.uid, 'logs', id), patch);
   };
@@ -185,7 +216,7 @@ function App() {
   // --- Data Management ---
 
   const exportJSON = () => {
-    const data = { user, catholicEnabled, darkMode, logs, timestamp: new Date().toISOString() };
+    const data = { user, catholicEnabled, darkMode, logs, localLogs, timestamp: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -195,12 +226,13 @@ function App() {
   };
 
   const exportCSV = () => {
-    if (logs.length === 0) {
+    const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (allLogs.length === 0) {
       alert("No hay datos para exportar");
       return;
     }
     const headers = ["Fecha", "Tipo", "Contenido"];
-    const rows = logs.map(l => [l.date, l.type, `"${l.content.replace(/"/g, '""')}"`]);
+    const rows = allLogs.map(l => [l.date, l.type, `"${l.content.replace(/"/g, '""')}"`]);
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -215,19 +247,22 @@ function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target.result);
-        if (data.user) {
-          setUser(data.user);
-          setCatholicEnabled(data.catholicEnabled);
-          setLogs(data.logs || []);
-          // Sync with local storage
-          localStorage.setItem('tcc_user', JSON.stringify(data.user));
-          localStorage.setItem('tcc_catholic', JSON.stringify(data.catholicEnabled));
-          localStorage.setItem('tcc_logs', JSON.stringify(data.logs || []));
-          alert("Datos importados con éxito");
+        if (data.localLogs) {
+          setLocalLogs(data.localLogs);
+          localStorage.setItem('tcc_local_logs', JSON.stringify(data.localLogs));
         }
+        
+        // If we want to import other things to Firestore, we'd need a loop.
+        // For now, let's at least restore local state if present.
+        if (data.catholicEnabled !== undefined) {
+          setCatholicEnabled(data.catholicEnabled);
+          saveSettings({ catholicEnabled: data.catholicEnabled });
+        }
+        
+        alert("Datos locales importados con éxito. Los registros TCC han sido restaurados.");
       } catch (err) {
         alert("Error al importar el archivo JSON");
       }
@@ -803,8 +838,9 @@ function App() {
     const dailyQuoteIndex = dayOfYear % DAILY_QUOTES.length;
     const todayQuote = DAILY_QUOTES[dailyQuoteIndex];
 
-    // Find the latest mood log to customize the reflection
-    const moodLogs = logs.filter(log => log.type === 'mood');
+    // Combine logs for reflections
+    const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const moodLogs = allLogs.filter(log => log.type === 'mood');
     const latestMoodRecord = moodLogs.length > 0 ? moodLogs[0].data.level : null;
     
     // Default to 'Neutral' if no mood has been set
@@ -1061,8 +1097,11 @@ function App() {
   };
 
   const StatsView = () => {
-    // Process Mood Logs
-    const moodLogs = logs.filter(log => log.type === 'mood');
+    // Merge remote and local logs
+    const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Process Mood Logs (mostly remote)
+    const moodLogs = allLogs.filter(log => log.type === 'mood');
     
     // Last 7 days chart
     const recentMoods = moodLogs.slice(0, 7).reverse();
@@ -1115,12 +1154,12 @@ function App() {
         <div className="mt-8">
           <h3 className="font-bold text-lg mb-4 dark:text-white flex items-center gap-2"><BookOpen className="w-5 h-5 text-[hsl(var(--brand))]" /> Historial de Registros</h3>
           <div className="space-y-4">
-            {logs.length === 0 ? (
+            {allLogs.length === 0 ? (
               <Card className="p-8 text-center bg-slate-50/50 dark:bg-slate-900/50 border-dashed">
                 <p className="text-subtle text-sm">No hay registros aún. Completa el Registro TCC o guarda tu estado de ánimo en el inicio.</p>
               </Card>
             ) : (
-              logs.map((log) => <LogCard key={log.id} log={log} onDelete={deleteLog} onUpdate={updateLog} />)
+              allLogs.map((log) => <LogCard key={log.id} log={log} onDelete={deleteLog} onUpdate={updateLog} />)
             )}
           </div>
         </div>
