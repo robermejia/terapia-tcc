@@ -282,8 +282,8 @@ function App() {
         <p className="text-subtle max-w-[280px]">Tu compañero para el bienestar emocional y espiritual.</p>
       </div>
 
-      <div className="w-full space-y-6">
-        <Button variant="google" onClick={handleLogin} className="py-4">
+      <div className="w-full space-y-6 flex flex-col items-center">
+        <Button variant="google" onClick={handleLogin} className="py-4 px-8 w-auto min-w-[240px]">
           <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
           Continuar con Google
         </Button>
