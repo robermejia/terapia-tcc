@@ -1018,12 +1018,12 @@ const CatholicView = ({ user, setView, saveLog, logs, localLogs }) => {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card onClick={() => setSubView('examen')} className="p-8 cursor-pointer hover:border-blue-300 group dark:bg-slate-800 dark:border-slate-700 hover:shadow-xl hover:shadow-blue-100 transition-all">
+          <Card onClick={() => setSubView('examen')} className="p-8 cursor-pointer hover:border-blue-300 group dark:bg-slate-800 dark:border-slate-700 hover:shadow-xl hover:shadow-blue-100 dark:hover:shadow-blue-900/20 transition-all">
              <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><History className="w-7 h-7 text-blue-600" /></div>
              <h3 className="text-xl font-bold dark:text-white">Examen de Conciencia</h3>
              <p className="text-sm text-subtle mt-2">Un momento de reflexión al final del día para repasar tus acciones y agradecer.</p>
           </Card>
-          <Card onClick={() => setSubView('prayers')} className="p-8 cursor-pointer hover:border-blue-300 group dark:bg-slate-800 dark:border-slate-700 hover:shadow-xl hover:shadow-blue-100 transition-all">
+          <Card onClick={() => setSubView('prayers')} className="p-8 cursor-pointer hover:border-blue-300 group dark:bg-slate-800 dark:border-slate-700 hover:shadow-xl hover:shadow-blue-100 dark:hover:shadow-blue-900/20 transition-all">
              <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Sun className="w-7 h-7 text-blue-600" /></div>
              <h3 className="text-xl font-bold dark:text-white">Oraciones de Calma</h3>
              <p className="text-sm text-subtle mt-2">Plegarias tradicionales para encontrar serenidad y fuerza en momentos de ansiedad.</p>
