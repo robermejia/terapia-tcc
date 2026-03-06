@@ -64,7 +64,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [mood, setMood] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [localLogs, setLocalLogs] = useState([]);
   const [habits, setHabits] = useState([]);
 
   // Helper to get user-scoped storage key
@@ -94,21 +93,22 @@ function App() {
           document.documentElement.classList.add('dark');
         }
 
-        // Load local logs for this user
-        const savedLogs = localStorage.getItem(getScopedKey('tcc_local_logs'));
-        if (savedLogs) {
-          setLocalLogs(JSON.parse(savedLogs));
-        } else {
-          // Migration: if no user-scoped logs exist, check for legacy logs
-          const legacyLogs = localStorage.getItem('tcc_local_logs');
-          if (legacyLogs) {
-            const parsed = JSON.parse(legacyLogs);
-            setLocalLogs(parsed);
-            localStorage.setItem(getScopedKey('tcc_local_logs'), legacyLogs);
-            // We keep the legacy key for now to avoid data loss if something fails, 
-            // but the app will now prefer the scoped one.
-          } else {
-            setLocalLogs([]);
+        // Load user-scoped local logs for migration one-time
+        const legacyLocalLogs = localStorage.getItem(getScopedKey('tcc_local_logs'));
+        if (legacyLocalLogs) {
+          const parsed = JSON.parse(legacyLocalLogs);
+          if (parsed.length > 0) {
+            // Process migration: push each local log to Firestore
+            for (const localLog of parsed) {
+              const { id, ...logContent } = localLog;
+              await addDoc(collection(db, 'users', firebaseUser.uid, 'logs'), {
+                ...logContent,
+                migratedFromLocal: true
+              });
+            }
+            // Clear local storage after migration
+            localStorage.removeItem(getScopedKey('tcc_local_logs'));
+            localStorage.removeItem('tcc_local_logs'); // Also clear the very old key if it exists
           }
         }
       } else {
@@ -116,12 +116,11 @@ function App() {
         setView('login');
         setLogs([]);
         setHabits([]);
-        setLocalLogs([]); // Clear local logs on logout
       }
       setAuthLoading(false);
     });
     return () => unsub();
-  }, [user?.uid]); // Add user?.uid to dependencies to re-run theme/logs logic when user changes
+  }, [user?.uid]);
 
   // ─── Firestore: real-time listeners for logs and habits ───────────────────
   useEffect(() => {
@@ -173,18 +172,9 @@ function App() {
 
   // ─── Logs CRUD ────────────────────────────────────────────────────────────
   const saveLog = async (type, content, data = {}) => {
-    const timestamp = new Date().toISOString();
-    const id = `local_${Date.now()}`;
-    
-    if (type === 'tcc_record') {
-      const newLog = { id, date: timestamp, type, content, data };
-      const updatedLocal = [newLog, ...localLogs];
-      setLocalLogs(updatedLocal);
-      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
-      return;
-    }
-
     if (!user?.uid) return;
+    const timestamp = new Date().toISOString();
+    
     await addDoc(collection(db, 'users', user.uid, 'logs'), {
       date: timestamp,
       type,
@@ -194,27 +184,11 @@ function App() {
   };
 
   const deleteLog = async (id) => {
-    // Check if it's a local log
-    if (id.toString().startsWith('local_')) {
-      const updatedLocal = localLogs.filter(l => l.id !== id);
-      setLocalLogs(updatedLocal);
-      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
-      return;
-    }
-
     if (!user?.uid) return;
     await deleteDoc(doc(db, 'users', user.uid, 'logs', id));
   };
 
   const updateLog = async (id, patch) => {
-    // Check if it's a local log
-    if (id.toString().startsWith('local_')) {
-      const updatedLocal = localLogs.map(l => l.id === id ? { ...l, ...patch } : l);
-      setLocalLogs(updatedLocal);
-      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
-      return;
-    }
-
     if (!user?.uid) return;
     await updateDoc(doc(db, 'users', user.uid, 'logs', id), patch);
   };
@@ -255,7 +229,7 @@ function App() {
   // --- Data Management ---
 
   const exportJSON = () => {
-    const data = { user, catholicEnabled, darkMode, logs, localLogs, timestamp: new Date().toISOString() };
+    const data = { user, catholicEnabled, darkMode, logs, timestamp: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -265,7 +239,7 @@ function App() {
   };
 
   const exportCSV = () => {
-    const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const allLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
     if (allLogs.length === 0) {
       alert("No hay datos para exportar");
       return;
@@ -290,8 +264,15 @@ function App() {
       try {
         const data = JSON.parse(event.target.result);
         if (data.localLogs) {
-          setLocalLogs(data.localLogs);
-          localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(data.localLogs));
+          // If importing old data, sync it to Firestore
+          for (const l of data.localLogs) {
+            await addDoc(collection(db, 'users', user.uid, 'logs'), {
+              date: l.date,
+              type: l.type,
+              content: l.content,
+              data: l.data
+            });
+          }
         }
         
         // If we want to import other things to Firestore, we'd need a loop.
@@ -356,9 +337,9 @@ function App() {
                 {view === 'dashboard' && <DashboardView user={user} setView={setView} saveLog={saveLog} catholicEnabled={catholicEnabled} habits={habits} persistHabits={persistHabits} mood={mood} setMood={setMood} />}
                 {view === 'register-tcc' && <TccRegistrationView setView={setView} saveLog={saveLog} />}
                 {view === 'emotions' && <EmotionalRegulationView setView={setView} />}
-                {view === 'catholic' && <CatholicView user={user} setView={setView} saveLog={saveLog} logs={logs} localLogs={localLogs} />}
+                {view === 'catholic' && <CatholicView user={user} setView={setView} saveLog={saveLog} logs={logs} />}
                 {view === 'settings' && <SettingsView user={user} setView={setView} toggleCatholic={toggleCatholic} catholicEnabled={catholicEnabled} toggleDarkMode={toggleDarkMode} darkMode={darkMode} exportJSON={exportJSON} exportCSV={exportCSV} importData={importData} handleLogout={handleLogout} />}
-                {view === 'stats' && <StatsView setView={setView} logs={logs} localLogs={localLogs} deleteLog={deleteLog} updateLog={updateLog} />}
+                {view === 'stats' && <StatsView setView={setView} logs={logs} deleteLog={deleteLog} updateLog={updateLog} />}
                 {view === 'journal' && <JournalView setView={setView} saveLog={saveLog} />}
                 {view === 'habits' && <HabitsView setView={setView} habits={habits} addHabitToFirestore={addHabitToFirestore} persistHabits={persistHabits} deleteHabitFromFirestore={deleteHabitFromFirestore} />}
             </main>
@@ -782,8 +763,8 @@ const EmotionalRegulationView = ({ setView }) => {
   );
 };
 
-const StatsView = ({ setView, logs, localLogs, deleteLog, updateLog }) => {
-  const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
+  const allLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // --- Dynamic Stats Calculations ---
   
@@ -838,7 +819,7 @@ const StatsView = ({ setView, logs, localLogs, deleteLog, updateLog }) => {
 
         {/* Cognitive Distortions Stats */}
         {(() => {
-           const tccRecords = [...logs, ...localLogs].filter(l => l.type === 'tcc_record' && l.data?.distortions);
+           const tccRecords = logs.filter(l => l.type === 'tcc_record' && l.data?.distortions);
            const allDistData = tccRecords.flatMap(l => l.data.distortions);
            
            if (allDistData.length === 0) return null;
@@ -1016,7 +997,7 @@ const SettingsView = ({ user, setView, toggleCatholic, catholicEnabled, toggleDa
   </div>
 );
 
-const CatholicView = ({ user, setView, saveLog, logs, localLogs }) => {
+const CatholicView = ({ user, setView, saveLog, logs }) => {
   const [subView, setSubView] = useState('menu'); // 'menu', 'examen', 'prayers'
   const [examenStep, setExamenStep] = useState(0);
   const [examenAnswers, setExamenAnswers] = useState(['', '', '', '', '']);
