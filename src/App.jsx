@@ -1043,7 +1043,7 @@ const CatholicView = ({ user, setView, saveLog, logs }) => {
                 saveLog('catholic_examen', 'Examen de Conciencia', { answers: examenAnswers });
                 setSubView('menu');
               }
-            }} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200">
+            }} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 dark:shadow-none">
               {examenStep < steps.length - 1 ? 'Siguiente' : 'Finalizar Examen'}
             </Button>
           </div>
