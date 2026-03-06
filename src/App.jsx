@@ -64,11 +64,11 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [mood, setMood] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [localLogs, setLocalLogs] = useState(() => {
-    const saved = localStorage.getItem('tcc_local_logs');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [localLogs, setLocalLogs] = useState([]);
   const [habits, setHabits] = useState([]);
+
+  // Helper to get user-scoped storage key
+  const getScopedKey = (key) => user?.uid ? `${key}_${user.uid}` : key;
 
   // ─── Firebase Auth listener ───────────────────────────────────────────────
   useEffect(() => {
@@ -87,22 +87,41 @@ function App() {
             document.documentElement.classList.add('dark');
           }
         }
-        // Also respect local theme preference
-        const savedTheme = localStorage.getItem('tcc_theme');
+        // Also respect local theme preference (user-scoped)
+        const savedTheme = localStorage.getItem(getScopedKey('tcc_theme'));
         if (savedTheme === 'dark') {
           setDarkMode(true);
           document.documentElement.classList.add('dark');
+        }
+
+        // Load local logs for this user
+        const savedLogs = localStorage.getItem(getScopedKey('tcc_local_logs'));
+        if (savedLogs) {
+          setLocalLogs(JSON.parse(savedLogs));
+        } else {
+          // Migration: if no user-scoped logs exist, check for legacy logs
+          const legacyLogs = localStorage.getItem('tcc_local_logs');
+          if (legacyLogs) {
+            const parsed = JSON.parse(legacyLogs);
+            setLocalLogs(parsed);
+            localStorage.setItem(getScopedKey('tcc_local_logs'), legacyLogs);
+            // We keep the legacy key for now to avoid data loss if something fails, 
+            // but the app will now prefer the scoped one.
+          } else {
+            setLocalLogs([]);
+          }
         }
       } else {
         setUser(null);
         setView('login');
         setLogs([]);
         setHabits([]);
+        setLocalLogs([]); // Clear local logs on logout
       }
       setAuthLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [user?.uid]); // Add user?.uid to dependencies to re-run theme/logs logic when user changes
 
   // ─── Firestore: real-time listeners for logs and habits ───────────────────
   useEffect(() => {
@@ -161,7 +180,7 @@ function App() {
       const newLog = { id, date: timestamp, type, content, data };
       const updatedLocal = [newLog, ...localLogs];
       setLocalLogs(updatedLocal);
-      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
       return;
     }
 
@@ -179,7 +198,7 @@ function App() {
     if (id.toString().startsWith('local_')) {
       const updatedLocal = localLogs.filter(l => l.id !== id);
       setLocalLogs(updatedLocal);
-      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
       return;
     }
 
@@ -192,7 +211,7 @@ function App() {
     if (id.toString().startsWith('local_')) {
       const updatedLocal = localLogs.map(l => l.id === id ? { ...l, ...patch } : l);
       setLocalLogs(updatedLocal);
-      localStorage.setItem('tcc_local_logs', JSON.stringify(updatedLocal));
+      localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(updatedLocal));
       return;
     }
 
@@ -224,10 +243,10 @@ function App() {
     setDarkMode(newMode);
     if (newMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('tcc_theme', 'dark');
+      localStorage.setItem(getScopedKey('tcc_theme'), 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('tcc_theme', 'light');
+      localStorage.setItem(getScopedKey('tcc_theme'), 'light');
     }
     saveSettings({ darkMode: newMode });
   };
@@ -272,7 +291,7 @@ function App() {
         const data = JSON.parse(event.target.result);
         if (data.localLogs) {
           setLocalLogs(data.localLogs);
-          localStorage.setItem('tcc_local_logs', JSON.stringify(data.localLogs));
+          localStorage.setItem(getScopedKey('tcc_local_logs'), JSON.stringify(data.localLogs));
         }
         
         // If we want to import other things to Firestore, we'd need a loop.
@@ -388,6 +407,15 @@ const LogCard = ({ log, onDelete, onUpdate }) => {
   const [editAnswers, setEditAnswers] = React.useState(
     log.type === 'tcc_record' ? (log.data?.answers || ['','','5','','']) : ['','','5','','']
   );
+  const [editDistortions, setEditDistortions] = React.useState(
+    log.type === 'tcc_record' ? (log.data?.distortions || []) : []
+  );
+
+  const toggleDistortion = (id) => {
+    setEditDistortions(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
 
   const TCC_LABELS = ['Situación', 'Pensamiento Automático', 'Emoción (0-10)', 'Conducta', 'Pensamiento Alternativo'];
 
@@ -401,7 +429,7 @@ const LogCard = ({ log, onDelete, onUpdate }) => {
     if (log.type === 'journal') {
       onUpdate(log.id, { data: { ...log.data, text: editText } });
     } else if (log.type === 'tcc_record') {
-      onUpdate(log.id, { data: { ...log.data, answers: editAnswers } });
+      onUpdate(log.id, { data: { ...log.data, answers: editAnswers, distortions: editDistortions } });
     }
     setEditing(false);
   };
@@ -494,22 +522,45 @@ const LogCard = ({ log, onDelete, onUpdate }) => {
             />
           )}
           {log.type === 'tcc_record' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {TCC_LABELS.map((label, i) => (
-                <div key={i} className={i === 4 ? 'md:col-span-2' : ''}>
-                  <p className="text-xs text-subtle font-bold uppercase mb-1">{label}</p>
-                  <textarea
-                    value={editAnswers[i]}
-                    onChange={(e) => {
-                      const updated = [...editAnswers];
-                      updated[i] = e.target.value;
-                      setEditAnswers(updated);
-                    }}
-                    rows={2}
-                    className="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-[hsl(var(--brand))] resize-none dark:text-white text-sm transition-colors"
-                  />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {TCC_LABELS.map((label, i) => (
+                  <div key={i} className={i === 4 ? 'md:col-span-2' : ''}>
+                    <p className="text-xs text-subtle font-bold uppercase mb-1">{label}</p>
+                    <textarea
+                      value={editAnswers[i]}
+                      onChange={(e) => {
+                        const updated = [...editAnswers];
+                        updated[i] = e.target.value;
+                        setEditAnswers(updated);
+                      }}
+                      rows={2}
+                      className="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-[hsl(var(--brand))] resize-none dark:text-white text-sm transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              {/* Distortions selection in Edit Mode */}
+              <div className="space-y-3">
+                <p className="text-xs text-subtle font-bold uppercase">Distorsiones Cognitivas</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 h-48 overflow-y-auto p-2 border-2 border-slate-50 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50">
+                  {COGNITIVE_DISTORTIONS.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => toggleDistortion(d.id)}
+                      className={`flex flex-col items-center text-center p-2 rounded-xl border transition-all ${
+                        editDistortions.includes(d.id)
+                          ? 'border-[hsl(var(--brand))] bg-[hsl(var(--brand)/0.1)] text-[hsl(var(--brand))] font-bold shadow-sm'
+                          : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-400 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-xl mb-1">{d.emoji}</span>
+                      <span className="text-[9px] leading-tight uppercase font-black tracking-tighter">{d.label}</span>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           )}
           <div className="flex gap-3 justify-end">
