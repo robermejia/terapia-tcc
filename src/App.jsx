@@ -785,6 +785,39 @@ const EmotionalRegulationView = ({ setView }) => {
 const StatsView = ({ setView, logs, localLogs, deleteLog, updateLog }) => {
   const allLogs = [...logs, ...localLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  // --- Dynamic Stats Calculations ---
+  
+  // 1. Mood Average
+  const moodLogs = allLogs.filter(l => l.type === 'mood' || l.type === 'tcc_record');
+  const moodValues = moodLogs.map(l => {
+    if (l.type === 'mood') {
+      // mood level is 0 to (EMOTIONS.length - 1)
+      return (l.data?.level || 0) / (EMOTIONS.length - 1) * 100;
+    }
+    if (l.type === 'tcc_record' && l.data?.answers) {
+      // emotion index 2 is string "0"-"10"
+      return parseInt(l.data.answers[2] || '0') * 10;
+    }
+    return null;
+  }).filter(v => v !== null);
+
+  const avgMood = moodValues.length > 0 
+    ? Math.round(moodValues.reduce((a, b) => a + b, 0) / moodValues.length) 
+    : 0;
+
+  // 2. Consistency (last 7 days)
+  const last7Days = [...Array(7)].map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return d.toDateString();
+  });
+  
+  const activeDays = last7Days.filter(day => 
+    allLogs.some(l => new Date(l.date).toDateString() === day)
+  ).length;
+
+  const consistency = Math.round((activeDays / 7) * 100);
+
   return (
     <div className="flex-1 p-6 animate-fade-in pb-24 max-w-4xl mx-auto w-full">
       <header className="flex items-center gap-4 mb-8">
@@ -798,8 +831,8 @@ const StatsView = ({ setView, logs, localLogs, deleteLog, updateLog }) => {
         <Card className="p-6 dark:bg-slate-800 dark:border-slate-700">
           <h3 className="font-bold flex items-center gap-2 mb-6 dark:text-white"><History className="w-5 h-5 text-blue-500" /> Resumen</h3>
           <div className="space-y-6">
-            <StatBar label="Ánimo Promedio" value={75} color="bg-green-500" />
-            <StatBar label="Consistencia" value={92} color="bg-blue-500" />
+            <StatBar label="Ánimo Promedio" value={avgMood} color="bg-green-500" />
+            <StatBar label="Consistencia (7 días)" value={consistency} color="bg-blue-500" />
           </div>
         </Card>
 
