@@ -304,7 +304,7 @@ function App() {
           <p className="text-subtle text-sm">Conectando con Firebase...</p>
         </div>
       ) : view === 'login' ? <LoginView handleLogin={handleLogin} /> : (
-        <div className="flex-1 flex flex-col md:flex-row max-w-[1800px] mx-auto w-full shadow-2xl">
+        <div className="flex-1 flex flex-col md:flex-row w-full shadow-2xl">
             {/* Nav Lateral para Tablets/Desktop */}
             <aside className="hidden md:flex flex-col w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 p-8 space-y-12 shadow-sm z-20 sticky top-0 h-screen">
               <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setView('dashboard')}>
@@ -800,7 +800,7 @@ const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
   const consistency = Math.round((activeDays / 7) * 100);
 
   return (
-    <div className="flex-1 p-6 animate-fade-in pb-24 max-w-6xl mx-auto w-full">
+    <div className="flex-1 p-6 animate-fade-in pb-24 max-w-[1600px] mx-auto w-full">
       <header className="flex items-center gap-4 mb-8">
         <button onClick={() => setView('dashboard')} className="p-2 hover:bg-[hsl(var(--accent))] dark:hover:bg-slate-800 rounded-xl transition-colors dark:text-white">
           <ArrowLeft className="w-5 h-5" />
@@ -1074,7 +1074,7 @@ const CatholicView = ({ user, setView, saveLog, logs }) => {
   }
 
   return (
-    <div className="flex-1 p-6 flex flex-col animate-fade-in max-w-6xl mx-auto w-full">
+    <div className="flex-1 p-6 flex flex-col animate-fade-in max-w-[1600px] mx-auto w-full">
        <header className="flex items-center gap-4 mb-8">
           <button onClick={() => setView('dashboard')} className="p-2 hover:bg-[hsl(var(--accent))] dark:hover:bg-slate-800 rounded-xl transition-colors dark:text-white">
             <ArrowLeft className="w-5 h-5" />
@@ -1114,7 +1114,7 @@ const DashboardView = ({ user, setView, saveLog, catholicEnabled, habits, persis
   return (
   <div className="flex-1 pb-24 animate-fade-in w-full">
     {/* Header Profile */}
-    <div className="p-6 flex justify-between items-center bg-gradient-to-b from-[hsl(var(--brand)/0.05)] to-transparent max-w-[1600px] mx-auto w-full">
+    <div className="p-6 flex justify-between items-center bg-gradient-to-b from-[hsl(var(--brand)/0.05)] to-transparent max-w-none mx-auto w-full px-8">
       <div>
         <h2 className="text-xl font-bold dark:text-white text-slate-800">Hola, {user?.name?.split(' ')[0]}</h2>
         <p className="text-subtle">¿Cómo va tu día?</p>
@@ -1124,7 +1124,7 @@ const DashboardView = ({ user, setView, saveLog, catholicEnabled, habits, persis
       </button>
     </div>
 
-    <div className="px-6 space-y-8 max-w-[1600px] mx-auto w-full">
+    <div className="px-8 space-y-8 max-w-none mx-auto w-full">
       {/* Top Grid: Mood + Phrase */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <Card className="lg:col-span-1 bg-gradient-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand)/0.8)] text-white border-none shadow-xl shadow-[hsl(var(--brand)/0.2)]">
