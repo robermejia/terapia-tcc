@@ -43,26 +43,26 @@ const COGNITIVE_DISTORTIONS = [
 ];
 
 const EMOTIONS = [
-  { emoji: '☀️', label: 'Alegría' },
-  { emoji: '🌧️', label: 'Tristeza' },
-  { emoji: '🌀', label: 'Ansiedad' },
-  { emoji: '🔥', label: 'Ira / Enojo' },
-  { emoji: '👻', label: 'Miedo' },
-  { emoji: '🛡️', label: 'Culpa' },
-  { emoji: '✖️', label: 'Frustración' },
+  { emoji: '😊', label: 'Alegría' },
+  { emoji: '😢', label: 'Tristeza' },
+  { emoji: '😰', label: 'Ansiedad' },
+  { emoji: '😡', label: 'Ira / Enojo' },
+  { emoji: '😨', label: 'Miedo' },
+  { emoji: '😔', label: 'Culpa' },
+  { emoji: '😤', label: 'Frustración' },
   { emoji: '✨', label: 'Esperanza' },
   { emoji: '👤', label: 'Soledad' },
-  { emoji: '⚓', label: 'Calma' },
-  { emoji: '🙈', label: 'Vergüenza' },
-  { emoji: '🤲', label: 'Gratitud' },
-  { emoji: '📚', label: 'Agobio' },
-  { emoji: '🚀', label: 'Entusiasmo' },
-  { emoji: '🔒', label: 'Inseguridad' },
-  { emoji: '🕵️', label: 'Curiosidad' },
+  { emoji: '😌', label: 'Calma' },
+  { emoji: '😳', label: 'Vergüenza' },
+  { emoji: '🙏', label: 'Gratitud' },
+  { emoji: '🤯', label: 'Agobio' },
+  { emoji: '🤩', label: 'Entusiasmo' },
+  { emoji: '😟', label: 'Inseguridad' },
+  { emoji: '🤔', label: 'Curiosidad' },
   { emoji: '✅', label: 'Aceptación' },
-  { emoji: '👁️', label: 'Envidia' },
-  { emoji: '☕', label: 'Aburrimiento' },
-  { emoji: '🏆', label: 'Orgullo' }
+  { emoji: '😒', label: 'Envidia' },
+  { emoji: '🥱', label: 'Aburrimiento' },
+  { emoji: '😎', label: 'Orgullo' }
 ];
 
 function App() {
