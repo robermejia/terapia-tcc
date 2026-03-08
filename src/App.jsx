@@ -819,7 +819,11 @@ const CustomTooltipStyle = {
 };
 
 const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
-  const allLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const allLogs = [...logs].sort((a, b) => {
+    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+    return dateB - dateA;
+  });
 
   // --- Dynamic Stats Calculations ---
 
@@ -844,10 +848,19 @@ const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
   const last7Days = [...Array(7)].map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    return d.toDateString();
+    // Use local YYYY-MM-DD for comparison
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  const activeDays = last7Days.filter(day =>
-    allLogs.some(l => new Date(l.date).toDateString() === day)
+
+  const activeDays = last7Days.filter(dayStr =>
+    allLogs.some(l => {
+      if (!l.date) return false;
+      const logDate = l.date.toDate ? l.date.toDate() : new Date(l.date);
+      if (isNaN(logDate.getTime())) return false;
+      // Also use local YYYY-MM-DD for the log
+      const logDayStr = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}`;
+      return logDayStr === dayStr;
+    })
   ).length;
   const consistency = Math.round((activeDays / 7) * 100);
 
