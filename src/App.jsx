@@ -830,7 +830,10 @@ const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
   // 2. Mood Average (0-100 scale)
   const moodValues = [
     ...moodLogs.map(l => ((l.data?.level || 0) / (EMOTIONS.length - 1)) * 100),
-    ...tccMoodLogs.map(l => ((l.data.moodIndex || 0) / (EMOTIONS.length - 1)) * 100),
+    ...tccMoodLogs.flatMap(l => {
+      const indices = l.data.moodIndices || (l.data.moodIndex !== undefined ? [l.data.moodIndex] : []);
+      return indices.map(idx => (idx / (EMOTIONS.length - 1)) * 100);
+    }),
   ].filter(v => v !== null);
 
   const avgMood = moodValues.length > 0
@@ -851,7 +854,10 @@ const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
   // 4. Most Frequent Emotion
   const allEmotionLabels = [
     ...moodLogs.map(l => EMOTIONS[l.data?.level]?.label).filter(Boolean),
-    ...tccMoodLogs.map(l => EMOTIONS[l.data?.moodIndex]?.label).filter(Boolean),
+    ...tccMoodLogs.flatMap(l => {
+      const indices = l.data.moodIndices || (l.data.moodIndex !== undefined ? [l.data.moodIndex] : []);
+      return indices.map(idx => EMOTIONS[idx]?.label);
+    }).filter(Boolean),
   ];
 
   const emotionCounts = allEmotionLabels.reduce((acc, label) => {
@@ -1116,16 +1122,19 @@ const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
                   let moodText = 'N/A';
                   
                   if (log.type === 'mood' || log.type === 'tcc_record') {
-                    const idx = log.type === 'mood' ? log.data?.level : log.data?.moodIndex;
-                    if (idx !== undefined && idx !== null) {
-                      const emotion = EMOTIONS[idx];
-                      moodText = emotion?.label || 'Neutro';
-                      // Grouping for colors
-                      if (idx >= 3 && idx <= 5) moodColor = 'text-green-500'; // Bien, Feliz, Radiante
-                      else if (idx >= 44 && idx <= 13) moodColor = 'text-blue-500'; // Extended ones
-                      else if (['Enojado', 'Ansioso', 'Frustrado', 'Abrumado'].includes(moodText)) moodColor = 'text-orange-500';
-                      else if (['Triste', 'Culpable'].includes(moodText)) moodColor = 'text-slate-500';
-                      else if (moodText === 'Neutral') moodColor = 'text-slate-400';
+                    const moodIndices = log.type === 'mood' 
+                      ? [log.data?.level] 
+                      : (log.data?.moodIndices || (log.data?.moodIndex !== undefined ? [log.data.moodIndex] : []));
+                    
+                    if (moodIndices.length > 0 && moodIndices[0] !== undefined && moodIndices[0] !== null) {
+                      const firstIdx = moodIndices[0];
+                      const emotion = EMOTIONS[firstIdx];
+                      moodText = moodIndices.length > 1 ? `${emotion?.label}...` : (emotion?.label || 'Neutro');
+                      
+                      // Color logic (based on first emotion)
+                      if ([0, 7, 9, 11, 13, 15, 16, 19].includes(firstIdx)) moodColor = 'text-green-500'; // Positive/Resilient
+                      else if ([2, 3, 6, 12].includes(firstIdx)) moodColor = 'text-orange-500'; // High activation negative
+                      else moodColor = 'text-slate-500'; // Low activation / other
                     }
                   } else {
                     moodText = log.type === 'journal' ? 'Diario' : 'Espiritual';
@@ -1146,13 +1155,13 @@ const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
                       <td className="py-6 px-4">
                         <div className="flex flex-wrap gap-2 max-w-[320px]">
                           {/* Emotions pills */}
-                          {log.data?.moodLabel && (
-                            <span className="px-3 py-1.5 rounded-xl border border-teal-500/20 bg-teal-500/5 text-teal-600 dark:text-teal-400 text-[10px] font-black uppercase tracking-tighter">
-                              {log.data.moodLabel}
-                            </span>
-                          )}
-                          {log.data?.emotions?.map((e, i) => (
+                          {(log.data?.moodLabels || (log.data?.moodLabel ? [log.data.moodLabel] : [])).map((label, i) => (
                              <span key={i} className="px-3 py-1.5 rounded-xl border border-teal-500/20 bg-teal-500/5 text-teal-600 dark:text-teal-400 text-[10px] font-black uppercase tracking-tighter">
+                               {label}
+                             </span>
+                          ))}
+                          {log.data?.emotions?.map((e, i) => (
+                             <span key={`extra-${i}`} className="px-3 py-1.5 rounded-xl border border-teal-500/20 bg-teal-500/5 text-teal-600 dark:text-teal-400 text-[10px] font-black uppercase tracking-tighter">
                                {e}
                              </span>
                           ))}
@@ -1691,7 +1700,13 @@ const TccRegistrationView = ({ setView, saveLog, updateLog, editingLog }) => {
   const [tccStep, setTccStep] = useState(0);
   const [tccAnswers, setTccAnswers] = useState(editingLog?.data?.answers || ['', '', '5', '', '']);
   const [selectedDistortions, setSelectedDistortions] = useState(editingLog?.data?.distortions || []);
-  const [selectedMoodIndex, setSelectedMoodIndex] = useState(editingLog?.data?.moodIndex ?? null);
+  const [selectedMoodIndices, setSelectedMoodIndices] = useState(editingLog?.data?.moodIndices || (editingLog?.data?.moodIndex !== undefined ? [editingLog.data.moodIndex] : []));
+
+  const toggleMood = (index) => {
+    setSelectedMoodIndices(prev => 
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    );
+  };
   const [selectedDate, setSelectedDate] = useState(() => {
     if (editingLog?.date) {
       return new Date(editingLog.date).toISOString().split('T')[0];
@@ -1719,13 +1734,18 @@ const TccRegistrationView = ({ setView, saveLog, updateLog, editingLog }) => {
   };
 
   const handleFinish = async () => {
-    const emotion = selectedMoodIndex !== null ? EMOTIONS[selectedMoodIndex] : null;
+    const selectedEmotions = selectedMoodIndices.map(idx => EMOTIONS[idx]).filter(Boolean);
+    
     const finalData = {
       answers: tccAnswers,
       distortions: selectedDistortions,
-      moodIndex: selectedMoodIndex,
-      moodLabel: emotion?.label,
-      moodEmoji: emotion?.emoji
+      moodIndices: selectedMoodIndices,
+      moodLabels: selectedEmotions.map(e => e.label),
+      moodEmojis: selectedEmotions.map(e => e.emoji),
+      // Keep legacy fields for partial compatibility if needed
+      moodIndex: selectedMoodIndices[0], 
+      moodLabel: selectedEmotions[0]?.label,
+      moodEmoji: selectedEmotions[0]?.emoji
     };
 
     const finalDate = new Date(selectedDate).toISOString();
@@ -1802,16 +1822,16 @@ const TccRegistrationView = ({ setView, saveLog, updateLog, editingLog }) => {
               {EMOTIONS.map((e, i) => (
                 <button
                   key={i}
-                  onClick={() => setSelectedMoodIndex(i)}
+                  onClick={() => toggleMood(i)}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
-                    selectedMoodIndex === i
+                    selectedMoodIndices.includes(i)
                       ? 'border-[hsl(var(--brand))] bg-[hsl(var(--brand)/0.08)] shadow-lg scale-105'
                       : 'border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-600 hover:scale-[1.02]'
                   }`}
                 >
                   <span className="text-3xl">{e.emoji}</span>
                   <span className={`text-[10px] font-black uppercase tracking-tighter ${
-                    selectedMoodIndex === i ? 'text-[hsl(var(--brand))]' : 'text-subtle'
+                    selectedMoodIndices.includes(i) ? 'text-[hsl(var(--brand))]' : 'text-subtle'
                   }`}>{e.label}</span>
                 </button>
               ))}
