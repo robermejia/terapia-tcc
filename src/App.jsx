@@ -4,7 +4,7 @@ import {
   Heart, BookOpen, Calendar, Settings, ChevronRight, 
   MessageSquare, User, LogOut, CheckCircle2, History, 
   ArrowLeft, Cross, ShieldCheck, BarChart3, Sliders,
-  Cloud, Sun, Wind, Loader
+  Cloud, Sun, Wind, Loader, Pencil, Trash2
 } from 'lucide-react';
 import { DAILY_QUOTES, CALM_PRAYERS, MOOD_REFLECTIONS } from './data/catholic';
 import { auth, provider, db } from './firebase';
@@ -13,6 +13,10 @@ import {
   collection, doc, addDoc, getDocs, updateDoc, deleteDoc,
   onSnapshot, setDoc, getDoc, query, orderBy, serverTimestamp
 } from 'firebase/firestore';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
 
 // --- Mock Data ---
 const MOTIVATIONAL_PHRASES = {
@@ -65,6 +69,7 @@ function App() {
   const [mood, setMood] = useState(null);
   const [logs, setLogs] = useState([]);
   const [habits, setHabits] = useState([]);
+  const [editingLog, setEditingLog] = useState(null);
 
   // Helper to get user-scoped storage key
   const getScopedKey = (key) => user?.uid ? `${key}_${user.uid}` : key;
@@ -171,12 +176,12 @@ function App() {
   };
 
   // ─── Logs CRUD ────────────────────────────────────────────────────────────
-  const saveLog = async (type, content, data = {}) => {
+  const saveLog = async (type, content, data = {}, customDate) => {
     if (!user?.uid) return;
-    const timestamp = new Date().toISOString();
+    const date = customDate || new Date().toISOString();
     
     await addDoc(collection(db, 'users', user.uid, 'logs'), {
-      date: timestamp,
+      date,
       type,
       content,
       data
@@ -191,6 +196,14 @@ function App() {
   const updateLog = async (id, patch) => {
     if (!user?.uid) return;
     await updateDoc(doc(db, 'users', user.uid, 'logs', id), patch);
+  };
+
+  const clearAllLogs = async () => {
+    if (!user?.uid) return;
+    const q = query(collection(db, 'users', user.uid, 'logs'));
+    const snap = await getDocs(q);
+    const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
   };
 
   // ─── Auth actions ─────────────────────────────────────────────────────────
@@ -263,28 +276,48 @@ function App() {
     reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target.result);
-        if (data.localLogs) {
-          // If importing old data, sync it to Firestore
-          for (const l of data.localLogs) {
-            await addDoc(collection(db, 'users', user.uid, 'logs'), {
-              date: l.date,
-              type: l.type,
-              content: l.content,
-              data: l.data
-            });
+        if (data.localLogs && Array.isArray(data.localLogs)) {
+          const count = data.localLogs.length;
+          if (count === 0) {
+            alert("El archivo no contiene registros para importar.");
+            return;
           }
+
+          const shouldClear = window.confirm(`Se detectaron ${count} registros en el archivo. ¿Deseas ELIMINAR los datos actuales del navegador para que SOLO queden estos ${count}?`);
+          
+          if (shouldClear) {
+            await clearAllLogs();
+          }
+          
+          let importedCount = 0;
+          // Use for...of to ensure sequential await
+          for (const l of data.localLogs) {
+            try {
+              await addDoc(collection(db, 'users', user.uid, 'logs'), {
+                date: l.date || new Date().toISOString(),
+                type: l.type || 'tcc_record',
+                content: l.content || 'Registro Importado',
+                data: l.data || {}
+              });
+              importedCount++;
+            } catch (innerErr) {
+              console.error("Error al importar registro individual:", innerErr);
+            }
+          }
+          
+          alert(`¡Hecho! Se procesaron ${count} registros e importaron ${importedCount} con éxito.`);
+          setView('stats');
+        } else {
+          alert("Error: El archivo no tiene el formato esperado ({ localLogs: [...] }).");
         }
         
-        // If we want to import other things to Firestore, we'd need a loop.
-        // For now, let's at least restore local state if present.
         if (data.catholicEnabled !== undefined) {
           setCatholicEnabled(data.catholicEnabled);
           saveSettings({ catholicEnabled: data.catholicEnabled });
         }
-        
-        alert("Datos locales importados con éxito. Los registros TCC han sido restaurados.");
       } catch (err) {
-        alert("Error al importar el archivo JSON");
+        console.error("Import error:", err);
+        alert("Error al procesar el archivo JSON: " + err.message);
       }
     };
     reader.readAsText(file);
@@ -335,11 +368,11 @@ function App() {
             {/* Contenido Principal */}
             <main className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950 relative">
                 {view === 'dashboard' && <DashboardView user={user} setView={setView} saveLog={saveLog} catholicEnabled={catholicEnabled} habits={habits} persistHabits={persistHabits} mood={mood} setMood={setMood} />}
-                {view === 'register-tcc' && <TccRegistrationView setView={setView} saveLog={saveLog} />}
+                {view === 'register-tcc' && <TccRegistrationView setView={(v) => { setView(v); if (v !== 'register-tcc') setEditingLog(null); }} saveLog={saveLog} updateLog={updateLog} editingLog={editingLog} />}
                 {view === 'emotions' && <EmotionalRegulationView setView={setView} />}
                 {view === 'catholic' && <CatholicView user={user} setView={setView} saveLog={saveLog} logs={logs} />}
                 {view === 'settings' && <SettingsView user={user} setView={setView} toggleCatholic={toggleCatholic} catholicEnabled={catholicEnabled} toggleDarkMode={toggleDarkMode} darkMode={darkMode} exportJSON={exportJSON} exportCSV={exportCSV} importData={importData} handleLogout={handleLogout} />}
-                {view === 'stats' && <StatsView setView={setView} logs={logs} deleteLog={deleteLog} updateLog={updateLog} />}
+                {view === 'stats' && <StatsView setView={setView} logs={logs} deleteLog={deleteLog} updateLog={updateLog} setEditingLog={setEditingLog} />}
                 {view === 'journal' && <JournalView setView={setView} saveLog={saveLog} />}
                 {view === 'habits' && <HabitsView setView={setView} habits={habits} addHabitToFirestore={addHabitToFirestore} persistHabits={persistHabits} deleteHabitFromFirestore={deleteHabitFromFirestore} />}
             </main>
@@ -763,41 +796,105 @@ const EmotionalRegulationView = ({ setView }) => {
   );
 };
 
-const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
+const CHART_COLORS = [
+  '#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981',
+  '#8b5cf6', '#f97316', '#ec4899', '#14b8a6', '#a855f7',
+  '#06b6d4', '#84cc16', '#e11d48', '#0ea5e9'
+];
+
+const CustomTooltipStyle = {
+  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+  border: '1px solid rgba(100, 116, 139, 0.3)',
+  borderRadius: '12px',
+  padding: '10px 14px',
+  color: '#e2e8f0',
+  fontSize: '12px',
+  fontWeight: '600',
+  boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+};
+
+const StatsView = ({ setView, logs, deleteLog, updateLog, setEditingLog }) => {
   const allLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // --- Dynamic Stats Calculations ---
-  
-  // 1. Mood Average
-  const moodLogs = allLogs.filter(l => l.type === 'mood' || l.type === 'tcc_record');
-  const moodValues = moodLogs.map(l => {
-    if (l.type === 'mood') {
-      // mood level is 0 to (EMOTIONS.length - 1)
-      return (l.data?.level || 0) / (EMOTIONS.length - 1) * 100;
-    }
-    if (l.type === 'tcc_record' && l.data?.answers) {
-      // emotion index 2 is string "0"-"10"
-      return parseInt(l.data.answers[2] || '0') * 10;
-    }
-    return null;
-  }).filter(v => v !== null);
 
-  const avgMood = moodValues.length > 0 
-    ? Math.round(moodValues.reduce((a, b) => a + b, 0) / moodValues.length) 
+  // 1. Mood logs (from mood type and tcc_record mood selections)
+  const moodLogs = allLogs.filter(l => l.type === 'mood');
+  const tccMoodLogs = allLogs.filter(l => l.type === 'tcc_record' && l.data?.moodIndex !== undefined);
+
+  // 2. Mood Average (0-100 scale)
+  const moodValues = [
+    ...moodLogs.map(l => ((l.data?.level || 0) / (EMOTIONS.length - 1)) * 100),
+    ...tccMoodLogs.map(l => ((l.data.moodIndex || 0) / (EMOTIONS.length - 1)) * 100),
+  ].filter(v => v !== null);
+
+  const avgMood = moodValues.length > 0
+    ? Math.round(moodValues.reduce((a, b) => a + b, 0) / moodValues.length)
     : 0;
 
-  // 2. Consistency (last 7 days)
+  // 3. Consistency (last 7 days)
   const last7Days = [...Array(7)].map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - i);
     return d.toDateString();
   });
-  
-  const activeDays = last7Days.filter(day => 
+  const activeDays = last7Days.filter(day =>
     allLogs.some(l => new Date(l.date).toDateString() === day)
   ).length;
-
   const consistency = Math.round((activeDays / 7) * 100);
+
+  // 4. Most Frequent Emotion
+  const allEmotionLabels = [
+    ...moodLogs.map(l => EMOTIONS[l.data?.level]?.label).filter(Boolean),
+    ...tccMoodLogs.map(l => EMOTIONS[l.data?.moodIndex]?.label).filter(Boolean),
+  ];
+
+  const emotionCounts = allEmotionLabels.reduce((acc, label) => {
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+
+  const sortedEmotions = Object.entries(emotionCounts).sort((a, b) => b[1] - a[1]);
+  const topEmotion = sortedEmotions[0];
+  const topEmotionData = topEmotion ? EMOTIONS.find(e => e.label === topEmotion[0]) : null;
+
+  // 5. Mood Distribution (for pie chart)
+  const moodDistribution = sortedEmotions.map(([label, count], i) => {
+    const em = EMOTIONS.find(e => e.label === label);
+    return { name: `${em?.emoji || ''} ${label}`, value: count, color: CHART_COLORS[i % CHART_COLORS.length] };
+  });
+
+  // 6. Emotion Frequency (for bar chart)
+  const emotionFrequency = sortedEmotions.slice(0, 10).map(([label, count], i) => {
+    const em = EMOTIONS.find(e => e.label === label);
+    return { name: `${em?.emoji || ''} ${label}`, count, fill: CHART_COLORS[i % CHART_COLORS.length] };
+  });
+
+  // 7. Intensity Evolution (line chart over time)
+  const intensityData = (() => {
+    const points = [];
+    // From mood logs
+    moodLogs.forEach(l => {
+      points.push({
+        date: new Date(l.date),
+        dateStr: new Date(l.date).toLocaleDateString('es', { day: '2-digit', month: 'short' }),
+        intensity: Math.round(((l.data?.level || 0) / (EMOTIONS.length - 1)) * 10),
+        type: 'mood',
+      });
+    });
+    // From TCC records (emotional intensity 0-10)
+    allLogs.filter(l => l.type === 'tcc_record' && l.data?.answers).forEach(l => {
+      points.push({
+        date: new Date(l.date),
+        dateStr: new Date(l.date).toLocaleDateString('es', { day: '2-digit', month: 'short' }),
+        intensity: parseInt(l.data.answers[2] || '5'),
+        type: 'tcc',
+      });
+    });
+    return points.sort((a, b) => a.date - b.date).slice(-30);
+  })();
+
+  const totalRecords = allLogs.length;
 
   return (
     <div className="flex-1 p-6 animate-fade-in pb-24 max-w-[1600px] mx-auto w-full">
@@ -808,32 +905,161 @@ const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
         <h2 className="text-xl font-bold dark:text-white">Estadísticas e Historial</h2>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-        <Card className="p-6 dark:bg-slate-800 dark:border-slate-700">
-          <h3 className="font-bold flex items-center gap-2 mb-6 dark:text-white"><History className="w-5 h-5 text-blue-500" /> Resumen</h3>
-          <div className="space-y-6">
-            <StatBar label="Ánimo Promedio" value={avgMood} color="bg-green-500" />
-            <StatBar label="Consistencia (7 días)" value={consistency} color="bg-blue-500" />
+      {/* ───── Summary Cards ───── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Total Records */}
+        <Card className="p-5 dark:bg-slate-800 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-500/10 rounded-full -mr-6 -mt-6" />
+          <p className="text-[10px] uppercase font-black tracking-widest text-subtle mb-1">Total Registros</p>
+          <p className="text-3xl font-black text-indigo-500">{totalRecords}</p>
+          <p className="text-[10px] text-subtle mt-1">entradas guardadas</p>
+        </Card>
+
+        {/* Most Frequent Emotion */}
+        <Card className="p-5 dark:bg-slate-800 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-pink-500/10 rounded-full -mr-6 -mt-6" />
+          <p className="text-[10px] uppercase font-black tracking-widest text-subtle mb-1">Emoción Frecuente</p>
+          {topEmotionData ? (
+            <>
+              <p className="text-3xl">{topEmotionData.emoji}</p>
+              <p className="text-xs font-bold dark:text-white mt-1">{topEmotionData.label} <span className="text-subtle font-normal">({topEmotion[1]}x)</span></p>
+            </>
+          ) : (
+            <p className="text-sm text-subtle">Sin datos</p>
+          )}
+        </Card>
+
+        {/* Average Mood */}
+        <Card className="p-5 dark:bg-slate-800 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-full -mr-6 -mt-6" />
+          <p className="text-[10px] uppercase font-black tracking-widest text-subtle mb-1">Ánimo Promedio</p>
+          <p className="text-3xl font-black text-green-500">{avgMood}%</p>
+          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mt-2 overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${avgMood}%` }} />
           </div>
         </Card>
 
-        {/* Cognitive Distortions Stats */}
+        {/* Consistency */}
+        <Card className="p-5 dark:bg-slate-800 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full -mr-6 -mt-6" />
+          <p className="text-[10px] uppercase font-black tracking-widest text-subtle mb-1">Consistencia 7d</p>
+          <p className="text-3xl font-black text-blue-500">{consistency}%</p>
+          <p className="text-[10px] text-subtle mt-1">{activeDays}/7 días activos</p>
+        </Card>
+      </div>
+
+      {/* ───── Charts Grid ───── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+        {/* Mood Distribution — Donut */}
+        <Card className="p-6 dark:bg-slate-800 dark:border-slate-700">
+          <h3 className="font-bold flex items-center gap-2 mb-4 dark:text-white">
+            <Heart className="w-5 h-5 text-pink-500" /> Distribución del Ánimo
+          </h3>
+          {moodDistribution.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={moodDistribution}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={3}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {moodDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={CustomTooltipStyle} />
+                <Legend
+                  wrapperStyle={{ fontSize: '11px', fontWeight: 700 }}
+                  formatter={(value) => <span className="dark:text-slate-300 text-slate-600">{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[280px] flex items-center justify-center">
+              <p className="text-subtle text-sm">Registra tu estado de ánimo para ver la distribución</p>
+            </div>
+          )}
+        </Card>
+
+        {/* Emotion Frequency — Bar Chart */}
+        <Card className="p-6 dark:bg-slate-800 dark:border-slate-700">
+          <h3 className="font-bold flex items-center gap-2 mb-4 dark:text-white">
+            <BarChart3 className="w-5 h-5 text-cyan-500" /> Frecuencia de Emociones
+          </h3>
+          {emotionFrequency.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={emotionFrequency} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.15)" />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} width={100} />
+                <Tooltip contentStyle={CustomTooltipStyle} />
+                <Bar dataKey="count" name="Veces" radius={[0, 8, 8, 0]} barSize={20}>
+                  {emotionFrequency.map((entry, index) => (
+                    <Cell key={`bar-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[280px] flex items-center justify-center">
+              <p className="text-subtle text-sm">Sin datos de emociones aún</p>
+            </div>
+          )}
+        </Card>
+
+        {/* Intensity Evolution — Line Chart */}
+        <Card className="p-6 dark:bg-slate-800 dark:border-slate-700 lg:col-span-2">
+          <h3 className="font-bold flex items-center gap-2 mb-4 dark:text-white">
+            <History className="w-5 h-5 text-amber-500" /> Evolución de Intensidad
+          </h3>
+          {intensityData.length > 1 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={intensityData} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.15)" />
+                <XAxis dataKey="dateStr" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis domain={[0, 10]} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <Tooltip contentStyle={CustomTooltipStyle}
+                  formatter={(value) => [`${value}/10`, 'Intensidad']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="intensity"
+                  name="Intensidad"
+                  stroke="#f59e0b"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[280px] flex items-center justify-center">
+              <p className="text-subtle text-sm">Necesitas al menos 2 registros para ver la evolución</p>
+            </div>
+          )}
+        </Card>
+
+        {/* Cognitive Distortions Patterns */}
         {(() => {
            const tccRecords = logs.filter(l => l.type === 'tcc_record' && l.data?.distortions);
            const allDistData = tccRecords.flatMap(l => l.data.distortions);
-           
            if (allDistData.length === 0) return null;
 
            const counts = allDistData.reduce((acc, curr) => {
              acc[curr] = (acc[curr] || 0) + 1;
              return acc;
            }, {});
-
            const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
            return (
-             <Card className="p-6 dark:bg-slate-800 dark:border-slate-700">
-               <h3 className="font-bold flex items-center gap-2 mb-6 dark:text-white"><Sliders className="w-5 h-5 text-orange-500" /> Patrones</h3>
+             <Card className="p-6 dark:bg-slate-800 dark:border-slate-700 lg:col-span-2">
+               <h3 className="font-bold flex items-center gap-2 mb-6 dark:text-white"><Sliders className="w-5 h-5 text-orange-500" /> Patrones de Distorsiones Cognitivas</h3>
                <div className="space-y-4">
                  {sorted.map(([id, count]) => {
                    const d = COGNITIVE_DISTORTIONS.find(item => item.id === id);
@@ -842,10 +1068,10 @@ const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
                      <div key={id} className="space-y-1.5">
                        <div className="flex justify-between items-center text-[10px] uppercase font-black tracking-tighter">
                          <span className="dark:text-slate-300 flex items-center gap-1"><span>{d?.emoji}</span> {d?.label}</span>
-                         <span className="text-subtle">{count} veces</span>
+                         <span className="text-subtle">{count} veces ({percentage}%)</span>
                        </div>
-                       <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                         <div className="h-full bg-orange-500 transition-all duration-1000" style={{ width: `${percentage}%` }} />
+                       <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                         <div className="h-full bg-gradient-to-r from-orange-400 to-orange-600 transition-all duration-1000 rounded-full" style={{ width: `${percentage}%` }} />
                        </div>
                      </div>
                    );
@@ -856,14 +1082,113 @@ const StatsView = ({ setView, logs, deleteLog, updateLog }) => {
         })()}
       </div>
 
-      <div className="space-y-4">
-        <h3 className="font-bold text-lg mb-4 dark:text-white flex items-center gap-2"><BookOpen className="w-5 h-5 text-[hsl(var(--brand))]" /> Historial</h3>
+      {/* ───── Detailed History Table ───── */}
+      <div className="space-y-6">
+        <h3 className="font-bold text-xl dark:text-white flex items-center gap-2">
+          Historial Detallado
+        </h3>
+        
         {allLogs.length === 0 ? (
-          <Card className="p-8 text-center bg-slate-50/50 dark:bg-slate-900/50 border-dashed">
+          <Card className="p-12 text-center bg-slate-50/50 dark:bg-slate-900/50 border-dashed">
             <p className="text-subtle text-sm">No hay registros aún.</p>
           </Card>
         ) : (
-          allLogs.map((log) => <LogCard key={log.id} log={log} onDelete={deleteLog} onUpdate={updateLog} />)
+          <div className="overflow-x-auto rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/40 shadow-sm">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800 text-[10px] uppercase font-black tracking-widest text-subtle/70">
+                  <th className="py-5 px-6">Fecha</th>
+                  <th className="py-5 px-4">Ánimo</th>
+                  <th className="py-5 px-4">Emociones / Distorsiones</th>
+                  <th className="py-5 px-4">Situación</th>
+                  <th className="py-5 px-6 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                {allLogs.map((log) => {
+                  // Mood color and label logic
+                  let moodColor = 'text-slate-400';
+                  let moodText = 'N/A';
+                  
+                  if (log.type === 'mood' || log.type === 'tcc_record') {
+                    const idx = log.type === 'mood' ? log.data?.level : log.data?.moodIndex;
+                    if (idx !== undefined && idx !== null) {
+                      const emotion = EMOTIONS[idx];
+                      moodText = emotion?.label || 'Neutro';
+                      // Grouping for colors
+                      if (idx >= 3 && idx <= 5) moodColor = 'text-green-500'; // Bien, Feliz, Radiante
+                      else if (idx >= 44 && idx <= 13) moodColor = 'text-blue-500'; // Extended ones
+                      else if (['Enojado', 'Ansioso', 'Frustrado', 'Abrumado'].includes(moodText)) moodColor = 'text-orange-500';
+                      else if (['Triste', 'Culpable'].includes(moodText)) moodColor = 'text-slate-500';
+                      else if (moodText === 'Neutral') moodColor = 'text-slate-400';
+                    }
+                  } else {
+                    moodText = log.type === 'journal' ? 'Diario' : 'Espiritual';
+                  }
+
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors group">
+                      <td className="py-6 px-6">
+                        <span className="text-sm font-bold dark:text-white">
+                          {new Date(log.date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </span>
+                      </td>
+                      <td className="py-6 px-4">
+                        <span className={`text-sm font-black uppercase tracking-tighter ${moodColor}`}>
+                          {moodText}
+                        </span>
+                      </td>
+                      <td className="py-6 px-4">
+                        <div className="flex flex-wrap gap-2 max-w-[320px]">
+                          {/* Emotions pills */}
+                          {log.data?.moodLabel && (
+                            <span className="px-3 py-1.5 rounded-xl border border-teal-500/20 bg-teal-500/5 text-teal-600 dark:text-teal-400 text-[10px] font-black uppercase tracking-tighter">
+                              {log.data.moodLabel}
+                            </span>
+                          )}
+                          {log.data?.emotions?.map((e, i) => (
+                             <span key={i} className="px-3 py-1.5 rounded-xl border border-teal-500/20 bg-teal-500/5 text-teal-600 dark:text-teal-400 text-[10px] font-black uppercase tracking-tighter">
+                               {e}
+                             </span>
+                          ))}
+                          {/* Distortions pills */}
+                          {log.data?.distortions?.map((dId) => {
+                            const d = COGNITIVE_DISTORTIONS.find(i => i.id === dId);
+                            return (
+                              <span key={dId} className="px-3 py-1.5 rounded-xl border border-orange-500/20 bg-orange-500/5 text-orange-600 dark:text-orange-400 text-[10px] font-black uppercase tracking-tighter">
+                                {d?.label ? `${d.label.slice(0, 12)}...` : dId}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="py-6 px-4">
+                        <p className="text-sm text-subtle line-clamp-2 max-w-[300px] leading-relaxed">
+                          {log.data?.answers?.[0] || log.data?.text || log.content}
+                        </p>
+                      </td>
+                      <td className="py-6 px-6 text-right">
+                        <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => { setEditingLog(log); setView('register-tcc'); }}
+                            className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-[hsl(var(--brand))] hover:shadow-lg transition-all"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => deleteLog(log.id)}
+                            className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 hover:shadow-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
@@ -1357,26 +1682,64 @@ const HabitsView = ({ setView, habits, addHabitToFirestore, persistHabits, delet
   );
 };
 
-const TccRegistrationView = ({ setView, saveLog }) => {
+const TccRegistrationView = ({ setView, saveLog, updateLog, editingLog }) => {
   const [tccStep, setTccStep] = useState(0);
-  const [tccAnswers, setTccAnswers] = useState(['', '', '5', '', '']);
-  const [selectedDistortions, setSelectedDistortions] = useState([]);
+  const [tccAnswers, setTccAnswers] = useState(editingLog?.data?.answers || ['', '', '5', '', '']);
+  const [selectedDistortions, setSelectedDistortions] = useState(editingLog?.data?.distortions || []);
+  const [selectedMoodIndex, setSelectedMoodIndex] = useState(editingLog?.data?.moodIndex ?? null);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (editingLog?.date) {
+      return new Date(editingLog.date).toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+  });
 
   const steps = [
+    { field: 'Fecha de Registro', desc: '¿Cuándo ocurrió el evento que deseas registrar?', isDate: true },
     { field: 'Situación', desc: '¿Qué pasó? Describe el evento brevemente.' },
     { field: 'Pensamiento Automático', desc: '¿Qué cruzó por tu mente en ese instante?' },
     { field: 'Distorsiones Cognitivas', desc: '¿Identificas algún patrón en tu pensamiento?', isDistortions: true },
-    { field: 'Emoción', desc: '¿Cómo te sentiste? (0 a 10)', isScale: true },
+    { field: 'Emoción', desc: '¿Cómo te sentiste? (Intensidad 0 a 10)', isScale: true },
+    { field: 'Estado de Ánimo', desc: '¿Qué emoción describe mejor cómo te sientes?', isMood: true },
     { field: 'Conducta', desc: '¿Qué hiciste en respuesta?' },
-    { field: 'Pensamiento Alternativo', desc: '¿Hay otra forma de ver esto?' }
+    { field: 'Pensamiento Alternativo', desc: '¿Hay otra forma más equilibrada de ver esto?' }
   ];
-  
+
   const current = steps[tccStep];
 
   const toggleDistortion = (id) => {
-    setSelectedDistortions(prev => 
+    setSelectedDistortions(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
+  };
+
+  const handleFinish = async () => {
+    const emotion = selectedMoodIndex !== null ? EMOTIONS[selectedMoodIndex] : null;
+    const finalData = {
+      answers: tccAnswers,
+      distortions: selectedDistortions,
+      moodIndex: selectedMoodIndex,
+      moodLabel: emotion?.label,
+      moodEmoji: emotion?.emoji
+    };
+
+    const finalDate = new Date(selectedDate).toISOString();
+
+    if (editingLog) {
+      await updateLog(editingLog.id, { date: finalDate, data: finalData });
+    } else {
+      await saveLog('tcc_record', 'Registro TCC Completo', finalData, finalDate);
+    }
+    setView('stats');
+  };
+
+  // Compute the correct answer index for text steps (skip distortions, scale, and mood)
+  const getAnswerIndex = () => {
+    if (tccStep === 1) return 0; // Situación
+    if (tccStep === 2) return 1; // Pensamiento Automático
+    if (tccStep === 6) return 3; // Conducta
+    if (tccStep === 7) return 4; // Pensamiento Alternativo
+    return null;
   };
 
   return (
@@ -1385,7 +1748,7 @@ const TccRegistrationView = ({ setView, saveLog }) => {
         <button onClick={() => setView('dashboard')} className="p-2 hover:bg-[hsl(var(--accent))] dark:hover:bg-slate-800 rounded-xl transition-colors dark:text-white">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-bold dark:text-white">Nuevo Registro TCC</h2>
+        <h2 className="text-xl font-bold dark:text-white">{editingLog ? 'Editar Registro TCC' : 'Nuevo Registro TCC'}</h2>
       </header>
 
       <div className="flex-1 space-y-8 bg-white dark:bg-slate-800 p-8 rounded-[3rem] shadow-sm border border-slate-50 dark:border-slate-700 overflow-y-auto">
@@ -1399,23 +1762,54 @@ const TccRegistrationView = ({ setView, saveLog }) => {
         </div>
 
         <div className="pt-6">
-          {current.isScale ? (
+          {current.isDate ? (
+            <div className="flex flex-col items-center gap-6 py-10">
+              <div className="p-8 bg-slate-50 dark:bg-slate-900 rounded-[3rem] border-2 border-slate-100 dark:border-slate-800 shadow-xl">
+                 <input 
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="bg-transparent border-none focus:outline-none dark:text-white text-3xl font-black text-center"
+                />
+              </div>
+              <p className="text-subtle text-sm font-bold uppercase tracking-widest text-center">Puedes registrar eventos pasados seleccionando la fecha</p>
+            </div>
+          ) : current.isScale ? (
             <div className="space-y-8">
-              <input 
-                type="range" min="0" max="10" 
+              <input
+                type="range" min="0" max="10"
                 value={tccAnswers[2]}
                 onChange={(e) => {
                   const newAnswers = [...tccAnswers];
                   newAnswers[2] = e.target.value;
                   setTccAnswers(newAnswers);
                 }}
-                className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[hsl(var(--brand))]" 
+                className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[hsl(var(--brand))]"
               />
               <div className="flex justify-between px-2">
                 {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
                   <span key={v} className="text-xs font-bold text-slate-400">{v}</span>
                 ))}
               </div>
+            </div>
+          ) : current.isMood ? (
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              {EMOTIONS.map((e, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelectedMoodIndex(i)}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+                    selectedMoodIndex === i
+                      ? 'border-[hsl(var(--brand))] bg-[hsl(var(--brand)/0.08)] shadow-lg scale-105'
+                      : 'border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-600 hover:scale-[1.02]'
+                  }`}
+                >
+                  <span className="text-3xl">{e.emoji}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-tighter ${
+                    selectedMoodIndex === i ? 'text-[hsl(var(--brand))]' : 'text-subtle'
+                  }`}>{e.label}</span>
+                </button>
+              ))}
             </div>
           ) : current.isDistortions ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1438,18 +1832,16 @@ const TccRegistrationView = ({ setView, saveLog }) => {
               ))}
             </div>
           ) : (
-            <textarea 
-              value={tccStep > 2 ? tccAnswers[tccStep - 1] : tccAnswers[tccStep]}
+            <textarea
+              value={tccAnswers[getAnswerIndex()] || ''}
               onChange={(e) => {
+                const idx = getAnswerIndex();
+                if (idx === null) return;
                 const newAnswers = [...tccAnswers];
-                if (tccStep > 2) {
-                  newAnswers[tccStep - 1] = e.target.value;
-                } else {
-                  newAnswers[tccStep] = e.target.value;
-                }
+                newAnswers[idx] = e.target.value;
                 setTccAnswers(newAnswers);
               }}
-              placeholder="Comienza a escribir aquí..." 
+              placeholder="Comienza a escribir aquí..."
               className="w-full h-64 p-6 rounded-3xl border-2 border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand)/0.1)] focus:border-[hsl(var(--brand))] transition-all resize-none shadow-inner dark:text-white text-lg"
             />
           )}
@@ -1460,18 +1852,14 @@ const TccRegistrationView = ({ setView, saveLog }) => {
         {tccStep > 0 && (
           <Button variant="outline" onClick={() => setTccStep(tccStep - 1)} className="flex-1 py-4">Volver</Button>
         )}
-        <Button 
+        <Button
           onClick={() => {
             if (tccStep < steps.length - 1) {
               setTccStep(tccStep + 1);
             } else {
-              saveLog('tcc_record', 'Registro TCC Completo', { 
-                answers: tccAnswers,
-                distortions: selectedDistortions 
-              });
-              setView('dashboard');
+              handleFinish();
             }
-          }} 
+          }}
           className="flex-1 py-4 shadow-xl shadow-[hsl(var(--brand)/0.2)] bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand)/0.9)] text-white"
         >
           {tccStep < steps.length - 1 ? 'Continuar' : 'Guardar Registro'}
