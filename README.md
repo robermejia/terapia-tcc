@@ -1,6 +1,6 @@
 # Terapia TCC - Bienestar Integral
 
-[![Vista Previa](https://i.ibb.co/YgrS9KB/project-17.png)](https://terapia-tcc.onrender.com)
+[![Vista Previa](https://i.ibb.co/YgrS9KB/project-17.png)](https://i.ibb.co/fdq8DB54/1.png)
 
 **Terapia TCC** es una aplicación web moderna diseñada para apoyar el bienestar emocional y mental a través de herramientas de Terapia Cognitivo-Conductual (TCC), complementadas con un enfoque opcional de espiritualidad católica.
 
