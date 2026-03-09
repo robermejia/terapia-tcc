@@ -1448,10 +1448,26 @@ const CatholicView = ({ user, setView, saveLog, logs }) => {
           
           <div className="md:col-span-2">
             <Card className="p-8 bg-gradient-to-br from-blue-50 to-white dark:from-slate-800 dark:to-slate-900 border-blue-100 dark:border-slate-700 shadow-sm">
-               <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">Reflexión del Día</h3>
-               <p className="text-xl font-serif italic text-blue-900 dark:text-blue-200 leading-relaxed">
-                 "{DAILY_QUOTES[new Date().getDay() % DAILY_QUOTES.length]}"
-               </p>
+               {/* 
+                  Calculate day of year (1-366) to match the PDF's 365+1 message structure
+               */}
+               {(() => {
+                 const now = new Date();
+                 const start = new Date(now.getFullYear(), 0, 0);
+                 const diff = now - start;
+                 const oneDay = 1000 * 60 * 60 * 24;
+                 const dayOfYear = Math.floor(diff / oneDay);
+                 const quoteIndex = (dayOfYear - 1) % DAILY_QUOTES.length;
+                 
+                  return (
+                    <>
+                      <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">Reflexión del Día ({dayOfYear}/366)</h3>
+                      <p className="text-xl font-serif italic text-blue-900 dark:text-blue-200 leading-relaxed">
+                        "{DAILY_QUOTES[quoteIndex]}"
+                      </p>
+                    </>
+                  );
+               })()}
             </Card>
           </div>
         </div>
